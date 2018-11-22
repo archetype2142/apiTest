@@ -6,6 +6,7 @@ class ApiService
 		unit = Unit.find_by(name: data[:name])
 		if unit 
 			if(data[:size])
+				checkType(data[:type])
 				factor = unit.factors.find_by(name: "size")
 				factor.update(value: data[:size])
 			else 
@@ -16,11 +17,8 @@ class ApiService
 				raise ActiveRecord::Rollback if simulate_failiure
 			end
 		else
-			unit = Unit.new(
-				name: data[:name],
-				kind: data[:type], 
-				agency: data.fetch(:agency, false)
-			)
+			checkType(data[:type])
+			unit = Unit.new( name: data[:name], kind: data[:type], agency: data.fetch(:agency, false) )
 			factor = Factor.new(name: 'size', value: data[:size])
 
 			ActiveRecord::Base.transaction do
@@ -31,12 +29,15 @@ class ApiService
 			data
 		end
 	end
+	def checkType(type)
+		raise ArgumentError if !["flat", "room"].include?(type)
+	end
 end
 
 RSpec.describe ApiService do
 	example_data = { name: "666", type: "flat", agency: false, size: 48 }
 	api = ApiService.new
-	it 'takes arguments in call function' do 
+	it 'returns arguments passed to function' do 
 		expect(api.call(example_data)).to eq example_data
 	end
 	
@@ -90,7 +91,7 @@ RSpec.describe ApiService do
 		expect(factor.value).to eq 49.to_s
 	end
 
-	it 'factor is removed after update if not provided' do
+	it 'factor is removed if not provided during update' do
 		api.call(example_data)
 		api.call(name: example_data[:name], type: "room", agency: true)
 		factor = Unit.last.factors.last
@@ -108,6 +109,10 @@ RSpec.describe ApiService do
 		api.call({ name: example_data[:name], type: "room", agency: true, size: 49 }, simulate_failiure: true)
 		unit = Unit.last
 		expect(unit.kind).to eq "flat"
+	end
+
+	it 'cannot have type besides room or flat' do
+		expect { api.call(name: example_data[:name], type: "house") }.to raise_error(ArgumentError)
 	end
 end
 
